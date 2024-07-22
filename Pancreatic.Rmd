@@ -1,0 +1,22 @@
+---
+title: "Pancreatic"
+output: html_document
+date: "2024-07-22"
+---
+
+```{r cars}
+library(readxl)
+library(dplyr)
+
+data <- read_excel("All Patients Newly Diagnosed with Pancreatic Cancer_2024-07-02.xlsx") %>% mutate(YEAR = format(`Visit 1 Diagnosis  Date`, "%Y"))
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
