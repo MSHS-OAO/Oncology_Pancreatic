@@ -4,19 +4,117 @@ output: html_document
 date: "2024-07-22"
 ---
 
-```{r cars}
+```{r initialize, echo = FALSE, message=FALSE, results='hide', warning=FALSE}
 library(readxl)
 library(dplyr)
+library(DiagrammeR)
+library(DBI)
+library(odbc)
+library(dbplyr)
+library(ggplot2)
+library(kableExtra)
 
-data <- read_excel("All Patients Newly Diagnosed with Pancreatic Cancer_2024-07-02.xlsx") %>% mutate(YEAR = format(`Visit 1 Diagnosis  Date`, "%Y"))
+
+options(dplyr.summarise.inform = FALSE)
+
+
+#Connection to ambulatory access data
+conn <- dbConnect(odbc::odbc(), 'OAO CLoud DB')
+access_table <- tbl(conn, "AMBULATORY_ACCESS")
+
+## Read in data
+data <- read_excel("All Patients Newly Diagnosed with Pancreatic Cancer_2024-06-02.xlsx") %>% mutate(YEAR = format(`Visit 1 Diagnosis  Date`, "%Y")) %>% filter(YEAR >= 2020)
+
+
+##Get list of unique ICD codes to pull from Ambulatory table
+unique_icd10 <- unique(data$`Visit 1 ICD`)
+
+access_data <- access_table %>% select(DEPARTMENT, PROVIDER, MRN, APPT_DTTM, PRIMARY_DX_CODE, APPT_STATUS) %>% filter(PRIMARY_DX_CODE %in% unique_icd10, APPT_STATUS %in% c("Arrived")) %>% collect()
+
+##create df for MRN most recent appointment
+mrn_max_appt <- access_data %>% group_by(MRN) %>% summarise(max_appt = format(max(APPT_DTTM), "%Y-%m-%d")) %>% filter(format(as.Date(max_appt), "%Y") == 2024)
+
+
+
+
 ```
 
+
+```{r processing, echo = FALSE}
+##If Provider 1 = Provider 2 then Provider 2 = Provider 3, else leave Provider 2
+data <- data %>% mutate(`Visit 2 Diagnosis Provider` = ifelse(`Visit 1 Diagnosis Provider` == `Visit 2 Diagnosis Provider`, `Visit 3 Diagnosis Provider`, `Visit 2 Diagnosis Provider`))
+
+## create list of providers with more than 1% of volume included
+provider_list <- data %>% group_by(`Visit 1 Diagnosis Provider`)%>% summarise(count_first = n()) %>% mutate(total = sum(count_first)) %>%
+                mutate(percent = count_first/total) %>% filter(percent >= 0.01)
+provider_list <- unique(provider_list$`Visit 1 Diagnosis Provider`)
+
+### Filter data to opnly include providers above
+data_filtered <- data %>% filter(`Visit 1 Diagnosis Provider` %in% provider_list)
+
+```
+
+```{r calculating, echo = FALSE, message=FALSE, results='hide', warning=FALSE}
+##Group by First provider visit
+data_first_visit <- data_filtered %>% group_by(`Visit 1 Diagnosis Provider`) %>% summarise(count_first = n())
+
+
+## Group by first and second provider visits
+data_second_visit <- data_filtered %>% group_by(`Visit 1 Diagnosis Provider`, `Visit 2 Diagnosis Provider`) %>% summarise(count_second = n())
+
+##join datasets 
+main_data <- left_join(data_first_visit, data_second_visit) #%>% filter(`Visit 1 Diagnosis Provider` != `Visit 2 Diagnosis Provider`)
+```
 ## Including Plots
 
 You can also embed plots, for example:
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
+DiagrammeR::grViz("digraph {
+  
+graph[layout = dot, rankdir = LR]
+
+box1 [label = '@@1']
+box2 [label = '@@2']
+
+box1 -> box2
+}
+
+[1]:  paste0(main_data[1,1], ' (', main_data[1,2], ')')
+[2]:  paste0(main_data[1,3], ' (', main_data[1,4], ')')
+")
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r Table Output, echo=FALSE}
+main_data %>% 
+  kable(escape = F, align = "c") %>%
+   kable_styling(bootstrap_options = c("hover","bordered"), full_width = FALSE, position = "left", row_label_position = "l", font_size = 16) %>%
+   #column_spec(column = column_border, border_right = "thin solid lightgray", width_min = "125px") %>%
+      column_spec(column = 1, bold = T) %>%
+      row_spec(row = 0, font_size = 18, bold=TRUE, background = "#d80b8c", color = "white") %>%
+        collapse_rows(c(1,2), valign = "top")
+```
+
+
+```{r DNU, echo=FALSE}
+# main_data_test <- main_data %>% top_n(5) 
+# image <- DiagrammeR::grViz("digraph {
+#   
+# graph[layout = dot, rankdir = LR]
+# 
+# box1 [label = '@@1']
+# box2 [label = '@@2']
+# 
+# box1 -> box2
+# }
+# 
+# [1]:  paste0(main_data[1,1], ' (', main_data[1,2], ')')
+# [2]:  paste0(main_data[1,3], ' (', main_data[1,4], ')')
+# ")
+# 
+# for (i in seq(nrow(main_data_test))) {
+#   current <- input[i, ]
+#   cat(sprintf(template, current$name, current$data, current$text))
+# }
+```
