@@ -97,24 +97,4 @@ main_data %>%
 ```
 
 
-```{r DNU, echo=FALSE}
-# main_data_test <- main_data %>% top_n(5) 
-# image <- DiagrammeR::grViz("digraph {
-#   
-# graph[layout = dot, rankdir = LR]
-# 
-# box1 [label = '@@1']
-# box2 [label = '@@2']
-# 
-# box1 -> box2
-# }
-# 
-# [1]:  paste0(main_data[1,1], ' (', main_data[1,2], ')')
-# [2]:  paste0(main_data[1,3], ' (', main_data[1,4], ')')
-# ")
-# 
-# for (i in seq(nrow(main_data_test))) {
-#   current <- input[i, ]
-#   cat(sprintf(template, current$name, current$data, current$text))
-# }
-```
+
