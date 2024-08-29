@@ -19,11 +19,11 @@ options(dplyr.summarise.inform = FALSE)
 
 
 #Connection to ambulatory access data
-conn <- dbConnect(odbc::odbc(), 'OAO CLoud DB')
-access_table <- tbl(conn, "AMBULATORY_ACCESS")
+# conn <- dbConnect(odbc::odbc(), 'OAO CLoud DB')
+# access_table <- tbl(conn, "AMBULATORY_ACCESS")
 
 ## Read in data
-data <- read_excel("All Patients Newly Diagnosed with Pancreatic Cancer_2024-06-02.xlsx") %>% mutate(YEAR = format(`Visit 1 Diagnosis  Date`, "%Y")) %>% filter(YEAR >= 2020)
+data <- read_excel("Patients Newly Diagnosed with Pancreatic Cancer.xlsx") %>% mutate(YEAR = format(as.Date(`Visit 1 Diagnosis  Date`, format = '%d-%B-%Y'), "%Y")) %>% filter(YEAR >= 2020)
 
 
 # ##Get list of unique ICD codes to pull from Ambulatory table
@@ -41,15 +41,12 @@ data <- read_excel("All Patients Newly Diagnosed with Pancreatic Cancer_2024-06-
 
 
 ```{r processing, echo = FALSE}
-##If Provider 1 = Provider 2 then Provider 2 = Provider 3, else leave Provider 2
-data <- data %>% mutate(`Visit 2 Diagnosis Provider` = ifelse(`Visit 1 Diagnosis Provider` == `Visit 2 Diagnosis Provider`, `Visit 3 Diagnosis Provider`, `Visit 2 Diagnosis Provider`))
-
 ## create list of providers with more than 1% of volume included
 provider_list <- data %>% group_by(`Visit 1 Diagnosis Provider`)%>% summarise(count_first = n()) %>% mutate(total = sum(count_first)) %>%
                 mutate(percent = count_first/total) %>% filter(percent >= 0.01)
 provider_list <- unique(provider_list$`Visit 1 Diagnosis Provider`)
 
-### Filter data to opnly include providers above
+### Filter data to only include providers above
 data_filtered <- data %>% filter(`Visit 1 Diagnosis Provider` %in% provider_list)
 
 ```
@@ -62,8 +59,13 @@ data_first_visit <- data_filtered %>% group_by(`Visit 1 Diagnosis Provider`) %>%
 ## Group by first and second provider visits
 data_second_visit <- data_filtered %>% group_by(`Visit 1 Diagnosis Provider`, `Visit 2 Diagnosis Provider`) %>% summarise(count_second = n())
 
+### Group by all three provider visits
+data_third_visit <- data_filtered %>% group_by(`Visit 1 Diagnosis Provider`, `Visit 2 Diagnosis Provider`, `Visit 3 Diagnosis Provider`) %>% summarise(count_third = n())
+
 ##join datasets 
 main_data <- left_join(data_first_visit, data_second_visit) #%>% filter(`Visit 1 Diagnosis Provider` != `Visit 2 Diagnosis Provider`)
+
+main_data <- left_join(main_data, data_third_visit)
 ```
 
 
@@ -72,7 +74,7 @@ main_data <- left_join(data_first_visit, data_second_visit) #%>% filter(`Visit 1
 
 test <- main_data %>% group_by(`Visit 1 Diagnosis Provider`) %>% summarise(Total = sum(count_second))
 
-main_data <- main_data[order(main_data$count_first,main_data$count_second, decreasing = T),]
+main_data <- main_data[order(main_data$count_first,main_data$count_second, main_data$count_third, decreasing = T),]
 
 main_data %>% 
   kable(escape = F, align = "c") %>%
@@ -80,8 +82,77 @@ main_data %>%
    #column_spec(column = column_border, border_right = "thin solid lightgray", width_min = "125px") %>%
       column_spec(column = 1, bold = T) %>%
       row_spec(row = 0, font_size = 18, bold=TRUE, background = "#d80b8c", color = "white") %>%
-        collapse_rows(c(1,2), valign = "top")
+        collapse_rows(c(1,2,3,4), valign = "top")
+```
+```{r calculating, echo = FALSE, message=FALSE, results='hide', warning=FALSE}
+
+##If Provider 1 = Provider 2 then Provider 2 = Provider 3, else leave Provider 2
+data_filtered_unique <- data_filtered %>% mutate(`Visit 2 Diagnosis Provider` = ifelse(`Visit 1 Diagnosis Provider` == `Visit 2 Diagnosis Provider`, `Visit 3 Diagnosis Provider`, `Visit 2 Diagnosis Provider`))
+
+
+##Group by First provider visit
+data_first_visit_unique <- data_filtered_unique %>% group_by(`Visit 1 Diagnosis Provider`) %>% summarise(count_first = n())
+
+
+## Group by first and second provider visits
+data_second_visit_unique <- data_filtered_unique %>% group_by(`Visit 1 Diagnosis Provider`, `Visit 2 Diagnosis Provider`) %>% summarise(count_second = n())
+
+### Group by all three provider visits
+data_third_visit_unique <- data_filtered_unique %>% group_by(`Visit 1 Diagnosis Provider`, `Visit 2 Diagnosis Provider`, `Visit 3 Diagnosis Provider`) %>% summarise(count_third = n())
+
+##join datasets 
+main_data_unique <- left_join(data_first_visit_unique, data_second_visit_unique) #%>% filter(`Visit 1 Diagnosis Provider` != `Visit 2 Diagnosis Provider`)
+
+main_data_unique <- left_join(main_data_unique, data_third_visit_unique)
 ```
 
 
 
+```{r Table Output, echo=FALSE}
+
+
+main_data_unique <- main_data_unique[order(main_data_unique$count_first,main_data_unique$count_second, main_data_unique$count_third, decreasing = T),]
+
+main_data_unique <- main_data_unique %>% rename(`First Visit` = count_first, `Second Visit` = count_second, `Third Visit` = count_third)
+
+main_data_unique %>% 
+  kable(escape = F, align = "c") %>%
+   kable_styling(bootstrap_options = c("hover","bordered"), full_width = FALSE, position = "left", row_label_position = "l", font_size = 16) %>%
+   #column_spec(column = column_border, border_right = "thin solid lightgray", width_min = "125px") %>%
+      column_spec(column = 1, bold = T) %>%
+      row_spec(row = 0, font_size = 18, bold=TRUE, background = "#d80b8c", color = "white") %>%
+        collapse_rows(c(1,2,3,4), valign = "top")
+```
+```{r Table Output, echo=FALSE}
+
+
+data_year_count <- data %>% select(YEAR, MRN) %>% group_by(YEAR) %>% summarise(Visits = n()) %>% rename(Year = YEAR)
+
+data_year_count <- data_year_count[order(data_year_count$Year, decreasing = T),]
+
+data_year_count %>% 
+  kable(escape = F, align = "c") %>%
+   kable_styling(bootstrap_options = c("hover","bordered"), full_width = FALSE, position = "left", row_label_position = "l", font_size = 16) %>%
+   #column_spec(column = column_border, border_right = "thin solid lightgray", width_min = "125px") %>%
+      column_spec(column = 1, bold = T) %>%
+      row_spec(row = 0, font_size = 18, bold=TRUE, background = "#d80b8c", color = "white") %>%
+   add_header_above(data.frame("Pancreatic Yearly Visits (includes all data)", 2), 
+                     monospace = TRUE)
+```    
+```{r Table Output, echo=FALSE}
+
+
+data_ref_provider <- data %>% select(`Visit 1 Referring Provider`, `Visit 1 Diagnosis Provider`) %>% group_by(`Visit 1 Referring Provider`, `Visit 1 Diagnosis Provider`) %>% summarise(`Reffered Visits` = n())
+
+data_ref_provider <- data_ref_provider[order(data_ref_provider$`Reffered Visits`, data_ref_provider$`Visit 1 Referring Provider`, decreasing = T),]
+
+data_ref_provider %>% 
+  kable(escape = F, align = "c") %>%
+   kable_styling(bootstrap_options = c("hover","bordered"), full_width = FALSE, position = "left", row_label_position = "l", font_size = 16) %>%
+   #column_spec(column = column_border, border_right = "thin solid lightgray", width_min = "125px") %>%
+      column_spec(column = 1, bold = T) %>%
+      row_spec(row = 0, font_size = 18, bold=TRUE, background = "#d80b8c", color = "white") %>%
+   add_header_above(data.frame("Pancreatic Referring Provider Visits", 3), 
+                     monospace = TRUE) %>%
+  collapse_rows(c(1), valign = "top")
+```
